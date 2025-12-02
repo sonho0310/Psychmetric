@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ứng Dụng Biểu Đồ Psychrometric (Hệ SI)</title>
+    <title>Ứng Dụng Psychrometric (Nhập Liệu Linh Hoạt)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -30,34 +30,27 @@
             background-color: #fafaf9;
         }
         
-        /* Tùy chỉnh input number bỏ nút tăng giảm mặc định để giao diện gọn hơn */
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button {  
-           -webkit-appearance: none; 
-           margin: 0; 
+           -webkit-appearance: none; margin: 0; 
         }
-        input[type=number] {
-            -moz-appearance: textfield;
-        }
-
-        /* Tùy chỉnh thanh trượt */
+        input[type=number] { -moz-appearance: textfield; }
+        
         input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
         input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%; background: #ea580c; cursor: pointer; margin-top: -7px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #d6d3d1; border-radius: 2px; }
-        input[type=range]:focus::-webkit-slider-thumb { ring: 2px solid #f97316; }
+        
+        .input-group-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: #a8a29e; margin-bottom: 0.25rem; }
     </style>
     <!-- 
-        Application Structure:
-        1. Header: Navigation
-        2. Main Content:
-           - Left: Chart.js Canvas (Psychrometric Chart Visualizer)
-           - Right: Control Panel (Properties, Processes, Mixing Tabs)
-        3. Footer: Education Snippets
-        
-        Key Features:
-        - SI Units (deg C, l/s, g/kg, kJ/kg)
-        - Bi-directional input binding (Slider <-> Number Input)
-        - Dynamic Chart plotting
+        UPDATE LOG:
+        - Added 'calculateFromInputs' logic handling 3-way dependency (DB, WB, RH).
+        - Properties Tab: Added WB Input field.
+        - Process/Mixing Tabs: Added RH Input fields.
+        - Logic: 
+            - Change DB -> Keep RH, Calc WB.
+            - Change RH -> Keep DB, Calc WB.
+            - Change WB -> Keep DB, Calc RH.
     -->
 </head>
 <body class="bg-stone-50 text-stone-800 min-h-screen flex flex-col">
@@ -69,10 +62,9 @@
                 <div class="w-9 h-9 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-sm">P</div>
                 <div>
                     <h1 class="text-lg md:text-xl font-bold tracking-tight text-stone-900 leading-tight">Psychrometry Explorer</h1>
-                    <p class="text-[10px] md:text-xs text-stone-500 font-medium">Theo tài liệu Trane Clinic (Hệ SI)</p>
+                    <p class="text-[10px] md:text-xs text-stone-500 font-medium">Trane Clinic | Hệ SI</p>
                 </div>
             </div>
-            <!-- Desktop Nav -->
             <nav class="hidden md:flex space-x-1 bg-stone-100 p-1 rounded-lg">
                 <button onclick="switchTab('properties')" id="nav-properties" class="active-tab px-4 py-2 text-sm rounded-md transition-all">Thông số</button>
                 <button onclick="switchTab('processes')" id="nav-processes" class="inactive-tab px-4 py-2 text-sm rounded-md transition-all">Quá trình</button>
@@ -81,7 +73,7 @@
         </div>
     </header>
 
-    <!-- Mobile Nav (Bottom fixed) -->
+    <!-- Mobile Nav -->
     <div class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 py-3 flex justify-around z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         <button onclick="switchTab('properties')" id="mob-nav-properties" class="flex flex-col items-center text-orange-600">
             <span class="text-xl">🌡️</span>
@@ -107,46 +99,22 @@
                     <div class="px-4 py-3 bg-stone-50 border-b border-stone-200 flex justify-between items-center">
                         <h3 class="font-bold text-stone-800 flex items-center gap-2">
                             <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                            Biểu đồ Psychrometric
+                            Biểu đồ Không khí ẩm
                         </h3>
                         <span class="text-[10px] bg-white border border-stone-200 text-stone-500 px-2 py-1 rounded shadow-sm font-mono">101.325 kPa</span>
                     </div>
-                    
                     <div class="p-2 md:p-4">
                         <div class="chart-container">
                             <canvas id="psychChart"></canvas>
                         </div>
                     </div>
-
-                    <!-- Live Data Dashboard -->
-                    <div class="grid grid-cols-4 border-t border-stone-100 divide-x divide-stone-100 bg-stone-50">
-                        <div class="p-3 text-center group hover:bg-white transition">
-                            <div class="text-[10px] text-stone-400 font-bold uppercase tracking-wider mb-1">Bầu Khô</div>
-                            <div class="font-bold text-stone-900 text-lg group-hover:text-orange-600 transition" id="disp-db">--</div>
-                        </div>
-                        <div class="p-3 text-center group hover:bg-white transition">
-                            <div class="text-[10px] text-stone-400 font-bold uppercase tracking-wider mb-1">Bầu Ướt</div>
-                            <div class="font-bold text-blue-600 text-lg" id="disp-wb">--</div>
-                        </div>
-                        <div class="p-3 text-center group hover:bg-white transition">
-                            <div class="text-[10px] text-stone-400 font-bold uppercase tracking-wider mb-1">Độ Ẩm</div>
-                            <div class="font-bold text-green-600 text-lg" id="disp-rh">--</div>
-                        </div>
-                        <div class="p-3 text-center group hover:bg-white transition">
-                            <div class="text-[10px] text-stone-400 font-bold uppercase tracking-wider mb-1">Đọng Sương</div>
-                            <div class="font-bold text-purple-600 text-lg" id="disp-dp">--</div>
-                        </div>
-                    </div>
                 </div>
-
-                <!-- Contextual Info -->
-                <div id="info-box" class="bg-blue-50 border-l-4 border-blue-500 p-4 text-sm text-blue-900 rounded-r shadow-sm transition-all duration-300">
-                    <div class="flex gap-3">
-                        <div class="text-xl">💡</div>
-                        <div>
-                            <strong class="block mb-1">Mẹo sử dụng:</strong> 
-                            Hãy thử thay đổi nhiệt độ Bầu khô nhưng giữ nguyên Độ chứa hơi để mô phỏng quá trình gia nhiệt (Sensible Heating).
-                        </div>
+                
+                <!-- Helper Text -->
+                <div class="bg-amber-50 border-l-4 border-amber-400 p-3 text-sm text-amber-900 rounded-r shadow-sm flex items-start gap-2">
+                    <span class="text-lg">💡</span>
+                    <div>
+                        <strong>Cơ chế nhập liệu thông minh:</strong> Chỉ cần nhập <strong>2 trong 3</strong> thông số (DB, WB, RH), thông số thứ 3 sẽ tự động được tính toán.
                     </div>
                 </div>
             </div>
@@ -154,79 +122,88 @@
             <!-- RIGHT COLUMN: CONTROLS -->
             <div class="lg:col-span-5">
                 
-                <!-- TAB 1: PROPERTIES -->
+                <!-- TAB 1: PROPERTIES (Thông số) -->
                 <div id="tab-properties" class="animate-fade-in block">
                     <div class="bg-white rounded-xl shadow-md border border-stone-200 overflow-hidden">
                         <div class="px-6 py-4 border-b border-stone-100 bg-gradient-to-r from-white to-stone-50">
                             <h3 class="text-lg font-bold text-stone-900">Điểm Trạng Thái</h3>
-                            <p class="text-xs text-stone-500">Nhập giá trị hoặc kéo thanh trượt để tra cứu.</p>
+                            <p class="text-xs text-stone-500">Nhập 2 thông số bất kỳ để tra cứu.</p>
                         </div>
                         
-                        <div class="p-6 space-y-8">
-                            <!-- DB Control -->
-                            <div class="relative">
-                                <div class="flex justify-between items-end mb-2">
-                                    <label class="text-sm font-bold text-stone-700 flex items-center gap-1">
-                                        Nhiệt độ Bầu khô (DB)
-                                    </label>
-                                    <div class="flex items-center">
-                                        <input type="number" id="num-db" value="25" min="0" max="50" step="0.1" 
-                                               class="w-20 text-right font-bold text-xl text-orange-600 border-b-2 border-orange-200 focus:border-orange-500 bg-transparent focus:outline-none transition-colors px-1"
-                                               oninput="syncInputs('db', 'num')">
-                                        <span class="text-sm font-bold text-stone-400 ml-1">°C</span>
+                        <div class="p-6 space-y-6">
+                            <!-- Inputs Row -->
+                            <div class="grid grid-cols-3 gap-4">
+                                <!-- DB Input -->
+                                <div>
+                                    <label class="input-group-label block">Bầu Khô (DB)</label>
+                                    <div class="relative">
+                                        <input type="number" id="prop-db" value="25" min="0" max="50" step="0.1" 
+                                               class="w-full text-center font-bold text-lg text-orange-600 border border-stone-300 rounded-md py-2 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                                               oninput="handlePropInput('db')">
+                                        <span class="absolute top-0 right-1 text-[10px] text-stone-400 leading-none mt-1">°C</span>
                                     </div>
                                 </div>
-                                <input type="range" id="range-db" min="0" max="50" value="25" step="0.1" class="w-full" oninput="syncInputs('db', 'range')">
-                                <div class="flex justify-between text-[10px] text-stone-400 mt-1 font-mono">
-                                    <span>0°C</span>
-                                    <span>50°C</span>
+                                <!-- WB Input -->
+                                <div>
+                                    <label class="input-group-label block">Bầu Ướt (WB)</label>
+                                    <div class="relative">
+                                        <input type="number" id="prop-wb" value="18" min="-5" max="50" step="0.1" 
+                                               class="w-full text-center font-bold text-lg text-blue-600 border border-stone-300 rounded-md py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                               oninput="handlePropInput('wb')">
+                                        <span class="absolute top-0 right-1 text-[10px] text-stone-400 leading-none mt-1">°C</span>
+                                    </div>
+                                </div>
+                                <!-- RH Input -->
+                                <div>
+                                    <label class="input-group-label block">Độ Ẩm (RH)</label>
+                                    <div class="relative">
+                                        <input type="number" id="prop-rh" value="50" min="0" max="100" step="1" 
+                                               class="w-full text-center font-bold text-lg text-green-600 border border-stone-300 rounded-md py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                                               oninput="handlePropInput('rh')">
+                                        <span class="absolute top-0 right-1 text-[10px] text-stone-400 leading-none mt-1">%</span>
+                                    </div>
                                 </div>
                             </div>
-
-                            <!-- RH Control -->
-                            <div class="relative">
-                                <div class="flex justify-between items-end mb-2">
-                                    <label class="text-sm font-bold text-stone-700 flex items-center gap-1">
-                                        Độ ẩm tương đối (RH)
-                                    </label>
-                                    <div class="flex items-center">
-                                        <input type="number" id="num-rh" value="50" min="0" max="100" step="1" 
-                                               class="w-20 text-right font-bold text-xl text-blue-600 border-b-2 border-blue-200 focus:border-blue-500 bg-transparent focus:outline-none transition-colors px-1"
-                                               oninput="syncInputs('rh', 'num')">
-                                        <span class="text-sm font-bold text-stone-400 ml-1">%</span>
+                            
+                            <!-- Sliders (Linked to Inputs) -->
+                            <div class="space-y-4 pt-4 border-t border-stone-100">
+                                <div>
+                                    <div class="flex justify-between text-xs text-stone-500 mb-1">
+                                        <span>Điều chỉnh DB</span>
+                                        <span id="label-range-db" class="font-mono">25°C</span>
                                     </div>
+                                    <input type="range" id="range-prop-db" min="0" max="50" step="0.5" value="25" oninput="handlePropSlider('db')">
                                 </div>
-                                <input type="range" id="range-rh" min="0" max="100" value="50" step="1" class="w-full" oninput="syncInputs('rh', 'range')">
-                                <div class="flex justify-between text-[10px] text-stone-400 mt-1 font-mono">
-                                    <span>0%</span>
-                                    <span>100%</span>
+                                <div>
+                                    <div class="flex justify-between text-xs text-stone-500 mb-1">
+                                        <span>Điều chỉnh RH</span>
+                                        <span id="label-range-rh" class="font-mono">50%</span>
+                                    </div>
+                                    <input type="range" id="range-prop-rh" min="1" max="100" step="1" value="50" oninput="handlePropSlider('rh')">
                                 </div>
                             </div>
 
                             <!-- Detailed Results -->
-                            <div class="pt-6 border-t border-stone-100">
-                                <h4 class="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3">Kết quả chi tiết</h4>
-                                <div class="grid grid-cols-2 gap-3">
-                                    <div class="bg-stone-50 p-3 rounded-lg border border-stone-100">
-                                        <div class="text-[10px] text-stone-500 mb-1">Độ chứa hơi (d)</div>
-                                        <div class="font-mono text-lg font-bold text-stone-800 leading-none" id="calc-w">--</div>
-                                        <div class="text-[10px] text-stone-400 mt-1">g/kg</div>
-                                    </div>
-                                    <div class="bg-stone-50 p-3 rounded-lg border border-stone-100">
-                                        <div class="text-[10px] text-stone-500 mb-1">Enthalpy (h)</div>
-                                        <div class="font-mono text-lg font-bold text-stone-800 leading-none" id="calc-h">--</div>
-                                        <div class="text-[10px] text-stone-400 mt-1">kJ/kg</div>
-                                    </div>
-                                    <div class="bg-stone-50 p-3 rounded-lg border border-stone-100">
-                                        <div class="text-[10px] text-stone-500 mb-1">Thể tích riêng (v)</div>
-                                        <div class="font-mono text-lg font-bold text-stone-800 leading-none" id="calc-v">--</div>
-                                        <div class="text-[10px] text-stone-400 mt-1">m³/kg</div>
-                                    </div>
-                                    <div class="bg-stone-50 p-3 rounded-lg border border-stone-100">
-                                        <div class="text-[10px] text-stone-500 mb-1">Điểm sương (DP)</div>
-                                        <div class="font-mono text-lg font-bold text-stone-800 leading-none" id="calc-dp">--</div>
-                                        <div class="text-[10px] text-stone-400 mt-1">°C</div>
-                                    </div>
+                            <div class="grid grid-cols-2 gap-3 bg-stone-50 p-4 rounded-lg border border-stone-100">
+                                <div>
+                                    <div class="text-[10px] text-stone-500">Độ chứa hơi (d)</div>
+                                    <div class="font-mono text-base font-bold text-stone-800" id="calc-w">--</div>
+                                    <div class="text-[10px] text-stone-400">g/kg</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] text-stone-500">Enthalpy (h)</div>
+                                    <div class="font-mono text-base font-bold text-stone-800" id="calc-h">--</div>
+                                    <div class="text-[10px] text-stone-400">kJ/kg</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] text-stone-500">Thể tích riêng (v)</div>
+                                    <div class="font-mono text-base font-bold text-stone-800" id="calc-v">--</div>
+                                    <div class="text-[10px] text-stone-400">m³/kg</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] text-stone-500">Điểm sương (DP)</div>
+                                    <div class="font-mono text-base font-bold text-stone-800" id="calc-dp">--</div>
+                                    <div class="text-[10px] text-stone-400">°C</div>
                                 </div>
                             </div>
                         </div>
@@ -238,71 +215,61 @@
                     <div class="bg-white rounded-xl shadow-md border border-stone-200 overflow-hidden">
                         <div class="px-6 py-4 border-b border-stone-100 bg-gradient-to-r from-white to-stone-50">
                             <h3 class="text-lg font-bold text-stone-900">Tính Tải Nhiệt</h3>
-                            <p class="text-xs text-stone-500">Tính công suất coil lạnh/sưởi dựa trên chênh lệch trạng thái.</p>
+                            <p class="text-xs text-stone-500">Nhập 2 số liệu cho mỗi điểm trạng thái.</p>
                         </div>
 
-                        <div class="p-6 space-y-6">
-                            <!-- Inputs -->
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="space-y-3">
-                                    <div class="flex items-center gap-2 text-xs font-bold text-orange-600 uppercase tracking-wider">
-                                        <span class="w-2 h-2 rounded-full bg-orange-500"></span> Điểm Vào
-                                    </div>
-                                    <div class="space-y-2">
-                                        <div class="flex justify-between items-center bg-stone-50 p-2 rounded border border-stone-200">
-                                            <label class="text-xs font-semibold">DB</label>
-                                            <input type="number" id="p1-db" value="27" class="w-12 text-right bg-transparent font-bold focus:outline-none" onchange="calcProcess()">
-                                        </div>
-                                        <div class="flex justify-between items-center bg-stone-50 p-2 rounded border border-stone-200">
-                                            <label class="text-xs font-semibold">WB</label>
-                                            <input type="number" id="p1-wb" value="19.5" class="w-12 text-right bg-transparent font-bold focus:outline-none" onchange="calcProcess()">
-                                        </div>
-                                    </div>
+                        <div class="p-4 space-y-4">
+                            <!-- Point 1 -->
+                            <div class="p-3 bg-orange-50 border border-orange-100 rounded-lg">
+                                <h4 class="text-xs font-bold text-orange-700 uppercase mb-2 flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-orange-500"></span> Điểm Vào (1)
+                                </h4>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <div><label class="input-group-label">DB (°C)</label><input type="number" id="p1-db" value="27" class="w-full text-sm border p-1 rounded font-bold" oninput="handleProcessInput('p1', 'db')"></div>
+                                    <div><label class="input-group-label">WB (°C)</label><input type="number" id="p1-wb" value="19.5" class="w-full text-sm border p-1 rounded font-bold" oninput="handleProcessInput('p1', 'wb')"></div>
+                                    <div><label class="input-group-label">RH (%)</label><input type="number" id="p1-rh" value="50" class="w-full text-sm border p-1 rounded font-bold" oninput="handleProcessInput('p1', 'rh')"></div>
                                 </div>
-                                <div class="space-y-3">
-                                    <div class="flex items-center gap-2 text-xs font-bold text-blue-600 uppercase tracking-wider">
-                                        <span class="w-2 h-2 rounded-full bg-blue-500"></span> Điểm Ra
-                                    </div>
-                                    <div class="space-y-2">
-                                        <div class="flex justify-between items-center bg-stone-50 p-2 rounded border border-stone-200">
-                                            <label class="text-xs font-semibold">DB</label>
-                                            <input type="number" id="p2-db" value="13" class="w-12 text-right bg-transparent font-bold focus:outline-none" onchange="calcProcess()">
-                                        </div>
-                                        <div class="flex justify-between items-center bg-stone-50 p-2 rounded border border-stone-200">
-                                            <label class="text-xs font-semibold">WB</label>
-                                            <input type="number" id="p2-wb" value="12" class="w-12 text-right bg-transparent font-bold focus:outline-none" onchange="calcProcess()">
-                                        </div>
-                                    </div>
+                            </div>
+
+                            <!-- Point 2 -->
+                            <div class="p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                                <h4 class="text-xs font-bold text-blue-700 uppercase mb-2 flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-blue-500"></span> Điểm Ra (2)
+                                </h4>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <div><label class="input-group-label">DB (°C)</label><input type="number" id="p2-db" value="13" class="w-full text-sm border p-1 rounded font-bold" oninput="handleProcessInput('p2', 'db')"></div>
+                                    <div><label class="input-group-label">WB (°C)</label><input type="number" id="p2-wb" value="12" class="w-full text-sm border p-1 rounded font-bold" oninput="handleProcessInput('p2', 'wb')"></div>
+                                    <div><label class="input-group-label">RH (%)</label><input type="number" id="p2-rh" value="90" class="w-full text-sm border p-1 rounded font-bold" oninput="handleProcessInput('p2', 'rh')"></div>
                                 </div>
                             </div>
 
                             <!-- Flow -->
-                            <div>
-                                <label class="text-xs font-bold text-stone-500 uppercase">Lưu lượng gió (l/s)</label>
-                                <div class="flex items-center mt-1">
-                                    <input type="number" id="process-flow" value="1000" step="50" class="w-full text-lg font-bold text-stone-800 border-b border-stone-300 focus:border-stone-800 focus:outline-none py-1" onchange="calcProcess()">
-                                    <span class="text-stone-400 font-mono text-sm ml-2">l/s</span>
+                            <div class="flex items-center justify-between bg-white p-3 border border-stone-200 rounded-lg">
+                                <label class="text-xs font-bold text-stone-600 uppercase">Lưu lượng</label>
+                                <div class="flex items-center gap-1">
+                                    <input type="number" id="process-flow" value="1000" step="50" class="w-24 text-right font-bold text-stone-800 border-b border-stone-300 focus:outline-none" oninput="calcProcess()">
+                                    <span class="text-xs text-stone-400">l/s</span>
                                 </div>
                             </div>
 
-                            <!-- Results Box -->
-                            <div class="bg-stone-900 text-white rounded-lg p-5 shadow-inner">
-                                <div class="flex justify-between items-baseline mb-4 border-b border-stone-700 pb-3">
-                                    <span class="text-sm font-medium text-stone-300">Tổng Công Suất ($Q_{total}$)</span>
-                                    <span class="text-2xl font-bold text-yellow-400" id="res-qt">-- kW</span>
+                            <!-- Results -->
+                            <div class="bg-stone-900 text-white rounded-lg p-4 shadow-inner">
+                                <div class="flex justify-between items-center mb-3 pb-2 border-b border-stone-700">
+                                    <span class="text-xs font-medium text-stone-300">Tổng Công Suất</span>
+                                    <span class="text-xl font-bold text-yellow-400" id="res-qt">-- kW</span>
                                 </div>
-                                <div class="space-y-2 text-sm">
-                                    <div class="flex justify-between">
-                                        <span class="text-stone-400">Nhiệt hiện ($Q_{sensible}$)</span>
-                                        <span class="font-mono text-stone-200" id="res-qs">--</span>
+                                <div class="grid grid-cols-3 gap-2 text-center text-[10px] text-stone-400">
+                                    <div>
+                                        <div>Nhiệt Hiện</div>
+                                        <div class="text-sm font-mono text-white mt-1" id="res-qs">--</div>
                                     </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-stone-400">Nhiệt ẩn ($Q_{latent}$)</span>
-                                        <span class="font-mono text-stone-200" id="res-ql">--</span>
+                                    <div class="border-l border-stone-700">
+                                        <div>Nhiệt Ẩn</div>
+                                        <div class="text-sm font-mono text-white mt-1" id="res-ql">--</div>
                                     </div>
-                                    <div class="flex justify-between pt-2 border-t border-stone-700 mt-2">
-                                        <span class="text-stone-400">SHR (Hệ số nhiệt hiện)</span>
-                                        <span class="font-bold text-white" id="res-shr">--</span>
+                                    <div class="border-l border-stone-700">
+                                        <div>SHR</div>
+                                        <div class="text-sm font-mono text-white mt-1" id="res-shr">--</div>
                                     </div>
                                 </div>
                             </div>
@@ -315,396 +282,373 @@
                     <div class="bg-white rounded-xl shadow-md border border-stone-200 overflow-hidden">
                         <div class="px-6 py-4 border-b border-stone-100 bg-gradient-to-r from-white to-stone-50">
                             <h3 class="text-lg font-bold text-stone-900">Tính Hòa Trộn</h3>
-                            <p class="text-xs text-stone-500">Tính điểm trạng thái khi trộn hai dòng khí.</p>
+                            <p class="text-xs text-stone-500">Nhập 2 số liệu cho mỗi dòng khí.</p>
                         </div>
                         
-                        <div class="p-6 space-y-6">
+                        <div class="p-4 space-y-4">
                             <!-- Stream 1 -->
-                            <div class="relative pl-4 border-l-4 border-orange-200">
-                                <h4 class="text-xs font-bold text-stone-500 uppercase mb-2">Dòng 1 (VD: Khí Hồi)</h4>
+                            <div class="p-3 border-l-4 border-orange-200 bg-stone-50 rounded-r">
+                                <div class="flex justify-between mb-2">
+                                    <h4 class="text-xs font-bold text-stone-500 uppercase">Dòng 1 (Khí Hồi)</h4>
+                                    <div class="flex items-center gap-1">
+                                        <input type="number" id="m1-flow" value="4000" class="w-16 text-right text-xs font-bold bg-transparent border-b border-stone-300" oninput="calcMixing()">
+                                        <span class="text-[10px]">l/s</span>
+                                    </div>
+                                </div>
                                 <div class="grid grid-cols-3 gap-2">
-                                    <div>
-                                        <label class="block text-[10px] text-stone-400">l/s</label>
-                                        <input type="number" id="m1-flow" value="4000" class="w-full border border-stone-200 rounded p-1 text-sm font-bold text-stone-700">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] text-stone-400">DB</label>
-                                        <input type="number" id="m1-db" value="25" class="w-full border border-stone-200 rounded p-1 text-sm font-bold text-stone-700">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] text-stone-400">WB</label>
-                                        <input type="number" id="m1-wb" value="18" class="w-full border border-stone-200 rounded p-1 text-sm font-bold text-stone-700">
-                                    </div>
+                                    <div><label class="input-group-label">DB</label><input type="number" id="m1-db" value="25" class="w-full text-sm border p-1 rounded bg-white" oninput="handleMixingInput('m1', 'db')"></div>
+                                    <div><label class="input-group-label">WB</label><input type="number" id="m1-wb" value="18" class="w-full text-sm border p-1 rounded bg-white" oninput="handleMixingInput('m1', 'wb')"></div>
+                                    <div><label class="input-group-label">RH</label><input type="number" id="m1-rh" value="50" class="w-full text-sm border p-1 rounded bg-white" oninput="handleMixingInput('m1', 'rh')"></div>
                                 </div>
                             </div>
 
                             <!-- Stream 2 -->
-                            <div class="relative pl-4 border-l-4 border-blue-200">
-                                <h4 class="text-xs font-bold text-stone-500 uppercase mb-2">Dòng 2 (VD: Khí Tươi)</h4>
+                            <div class="p-3 border-l-4 border-blue-200 bg-stone-50 rounded-r">
+                                <div class="flex justify-between mb-2">
+                                    <h4 class="text-xs font-bold text-stone-500 uppercase">Dòng 2 (Khí Tươi)</h4>
+                                    <div class="flex items-center gap-1">
+                                        <input type="number" id="m2-flow" value="1000" class="w-16 text-right text-xs font-bold bg-transparent border-b border-stone-300" oninput="calcMixing()">
+                                        <span class="text-[10px]">l/s</span>
+                                    </div>
+                                </div>
                                 <div class="grid grid-cols-3 gap-2">
-                                    <div>
-                                        <label class="block text-[10px] text-stone-400">l/s</label>
-                                        <input type="number" id="m2-flow" value="1000" class="w-full border border-stone-200 rounded p-1 text-sm font-bold text-stone-700">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] text-stone-400">DB</label>
-                                        <input type="number" id="m2-db" value="35" class="w-full border border-stone-200 rounded p-1 text-sm font-bold text-stone-700">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] text-stone-400">WB</label>
-                                        <input type="number" id="m2-wb" value="28" class="w-full border border-stone-200 rounded p-1 text-sm font-bold text-stone-700">
-                                    </div>
+                                    <div><label class="input-group-label">DB</label><input type="number" id="m2-db" value="35" class="w-full text-sm border p-1 rounded bg-white" oninput="handleMixingInput('m2', 'db')"></div>
+                                    <div><label class="input-group-label">WB</label><input type="number" id="m2-wb" value="28" class="w-full text-sm border p-1 rounded bg-white" oninput="handleMixingInput('m2', 'wb')"></div>
+                                    <div><label class="input-group-label">RH</label><input type="number" id="m2-rh" value="60" class="w-full text-sm border p-1 rounded bg-white" oninput="handleMixingInput('m2', 'rh')"></div>
                                 </div>
                             </div>
 
-                            <button onclick="calcMixing()" class="w-full py-3 bg-stone-800 hover:bg-stone-700 text-white rounded-lg shadow-md font-bold transition transform active:scale-95">
-                                Tính Toán Điểm Hòa Trộn
-                            </button>
-
                             <!-- Result Mix -->
                             <div class="mt-4 p-4 bg-gradient-to-br from-stone-100 to-stone-200 rounded-lg border border-stone-300 text-center">
-                                <span class="text-[10px] uppercase font-bold text-stone-500 tracking-widest">Điểm Hỗn Hợp (Mixed Air)</span>
+                                <span class="text-[10px] uppercase font-bold text-stone-500 tracking-widest">Điểm Hỗn Hợp (Mixed)</span>
                                 <div class="flex justify-center items-center gap-4 mt-2">
                                     <div>
-                                        <div class="text-3xl font-bold text-stone-800" id="mix-db">--</div>
-                                        <div class="text-xs text-stone-500">Độ C (DB)</div>
+                                        <div class="text-2xl font-bold text-stone-800" id="mix-db">--</div>
+                                        <div class="text-[10px] text-stone-500">DB (°C)</div>
+                                    </div>
+                                    <div class="h-8 w-px bg-stone-300"></div>
+                                    <div>
+                                        <div class="text-xl font-bold text-stone-600 font-mono" id="mix-wb">--</div>
+                                        <div class="text-[10px] text-stone-500">WB (°C)</div>
                                     </div>
                                     <div class="h-8 w-px bg-stone-300"></div>
                                     <div>
                                         <div class="text-xl font-bold text-stone-600 font-mono" id="mix-h">--</div>
-                                        <div class="text-xs text-stone-500">kJ/kg (h)</div>
+                                        <div class="text-[10px] text-stone-500">h (kJ/kg)</div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-
             </div>
         </div>
-
     </main>
 
     <script>
-        // --- MATH LIBRARY (SI Units) ---
+        // --- MATH UTILS (SI) ---
+        const P_ATM = 101.325; // kPa
 
-        // Psat (kPa) using Magnus-Tetens
-        function getSatVaporPressureSI(tempC) {
-            return 0.61078 * Math.exp((17.27 * tempC) / (tempC + 237.3));
+        function getPsat(t) {
+            return 0.61078 * Math.exp((17.27 * t) / (t + 237.3));
         }
 
-        // W (g/kg) from T and RH
-        function getHumidityRatioSI(tempC, rhPercent) {
-            const P_atm_kPa = 101.325;
-            const Ps = getSatVaporPressureSI(tempC);
-            const Pv = Ps * (rhPercent / 100);
-            if(Pv >= P_atm_kPa) return 999; // Cap at theoretical limit
-            const W_kg_kg = 0.622 * Pv / (P_atm_kPa - Pv);
-            return W_kg_kg * 1000;
+        function getPv(t, rh) {
+            return getPsat(t) * (rh / 100);
         }
 
-        // Enthalpy (kJ/kg)
-        function getEnthalpySI(tempC, wGrams) {
-            const W_kg = wGrams / 1000;
-            return (1.006 * tempC) + (W_kg * (2501 + (1.86 * tempC)));
+        function getW(t, rh) {
+            let pv = getPv(t, rh);
+            if (pv >= P_ATM) pv = P_ATM - 0.01;
+            const w = 0.622 * pv / (P_ATM - pv);
+            return w * 1000; // g/kg
         }
 
-        // Specific Volume (m3/kg)
-        function getSpecificVolumeSI(tempC, wGrams) {
-            const W_kg = wGrams / 1000;
-            const P_kPa = 101.325;
-            const T_kelvin = tempC + 273.15;
-            return (0.287042 * T_kelvin * (1 + 1.6078 * W_kg)) / P_kPa;
+        function getEnthalpy(t, wGrams) {
+            const w = wGrams / 1000;
+            return 1.006 * t + w * (2501 + 1.86 * t);
         }
 
-        // Dew Point (C)
-        function getDewPointSI(tempC, rhPercent) {
-            if (rhPercent <= 0) return -50;
-            const gamma = Math.log(rhPercent/100) + (17.27 * tempC) / (237.3 + tempC);
+        function getVol(t, wGrams) {
+            const w = wGrams / 1000;
+            return (0.287042 * (t + 273.15) * (1 + 1.6078 * w)) / P_ATM;
+        }
+
+        function getDewPoint(t, rh) {
+            if (rh <= 0) return -50;
+            const gamma = Math.log(rh / 100) + (17.27 * t) / (237.3 + t);
             return (237.3 * gamma) / (17.27 - gamma);
         }
 
-        // Wet Bulb Iterative Solver
-        function getWetBulbSI(tempC, rhPercent) {
-            let low = -20;
-            let high = tempC;
-            const P_atm = 101.325;
-            const Pv_target = getSatVaporPressureSI(tempC) * (rhPercent / 100);
-
-            // Binary search approximation
+        // Calculate WB from DB and RH (Iterative)
+        function calcWB(db, rh) {
+            let low = -20, high = db;
+            const targetPv = getPv(db, rh);
             for(let i=0; i<20; i++) {
                 let mid = (low + high) / 2;
-                let Ps_mid = getSatVaporPressureSI(mid);
-                // Psychrometric constant approximation A ~ 0.000666
-                let Pv_calc = Ps_mid - 0.000666 * P_atm * (tempC - mid);
-                if (Pv_calc > Pv_target) { high = mid; } else { low = mid; }
+                let psMid = getPsat(mid);
+                // Ferrel's equation approx or similar carrier eq
+                let pvCalc = psMid - 0.000666 * P_ATM * (db - mid);
+                if (pvCalc > targetPv) high = mid;
+                else low = mid;
             }
             return (low + high) / 2;
         }
 
-        // Get W from DB and WB
-        function getWFromDBWB_SI(db, wb) {
-            const P_atm = 101.325;
-            const Ps_wb = getSatVaporPressureSI(wb);
-            const Pv = Ps_wb - 0.000666 * P_atm * (db - wb);
-            const W = 0.622 * Pv / (P_atm - Pv);
-            return W * 1000;
+        // Calculate RH from DB and WB
+        function calcRH(db, wb) {
+            const psWb = getPsat(wb);
+            const pv = psWb - 0.000666 * P_ATM * (db - wb);
+            const psDb = getPsat(db);
+            let rh = (pv / psDb) * 100;
+            if (rh > 100) rh = 100;
+            if (rh < 0) rh = 0;
+            return rh;
         }
 
-        // --- UI LOGIC ---
+        // --- CORE LOGIC ---
+        
+        // Universal Input Handler for 3-way dependency
+        // Returns the updated set {db, wb, rh}
+        function resolveState(db, wb, rh, trigger) {
+            let nDB = parseFloat(db);
+            let nWB = parseFloat(wb);
+            let nRH = parseFloat(rh);
+
+            if (trigger === 'db') {
+                // Keep RH constant, Update WB
+                nWB = calcWB(nDB, nRH);
+            } else if (trigger === 'rh') {
+                // Keep DB constant, Update WB
+                nWB = calcWB(nDB, nRH);
+            } else if (trigger === 'wb') {
+                // Keep DB constant, Update RH
+                nRH = calcRH(nDB, nWB);
+            }
+            
+            return { db: nDB, wb: nWB, rh: nRH };
+        }
+
+        // --- UI HANDLERS ---
 
         let chartInstance = null;
         let currentTab = 'properties';
 
         function initChart() {
             const ctx = document.getElementById('psychChart').getContext('2d');
-            
-            // Generate Saturation Curve
             const satCurve = [];
-            for (let t = -5; t <= 55; t += 1) {
-                satCurve.push({x: t, y: getHumidityRatioSI(t, 100)});
-            }
-
-            // Generate standard RH curves for reference (optional but looks nice)
-            const rh50Curve = [];
-            for (let t = -5; t <= 55; t += 2) {
-                rh50Curve.push({x: t, y: getHumidityRatioSI(t, 50)});
-            }
+            for(let t=-5; t<=55; t++) satCurve.push({x: t, y: getW(t, 100)});
+            
+            const rh50 = [];
+            for(let t=-5; t<=55; t+=2) rh50.push({x: t, y: getW(t, 50)});
 
             chartInstance = new Chart(ctx, {
                 type: 'scatter',
                 data: {
                     datasets: [
-                        {
-                            label: 'Bão Hòa (100% RH)',
-                            data: satCurve,
-                            showLine: true,
-                            borderColor: '#2563eb', 
-                            borderWidth: 2,
-                            pointRadius: 0,
-                            fill: false,
-                            tension: 0.4
-                        },
-                        {
-                            label: '50% RH',
-                            data: rh50Curve,
-                            showLine: true,
-                            borderColor: '#93c5fd', 
-                            borderWidth: 1,
-                            pointRadius: 0,
-                            borderDash: [5, 5],
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Điểm Trạng Thái',
-                            data: [{x: 25, y: getHumidityRatioSI(25, 50)}],
-                            backgroundColor: '#ea580c',
-                            borderColor: '#fff',
-                            borderWidth: 2,
-                            pointRadius: 8,
-                            pointHoverRadius: 10
-                        },
-                        {
-                            label: 'Process Line',
-                            data: [],
-                            showLine: true,
-                            borderColor: '#dc2626',
-                            borderWidth: 3,
-                            pointRadius: 4,
-                            pointBackgroundColor: '#dc2626'
-                        }
+                        { label: 'Bão Hòa', data: satCurve, showLine:true, borderColor: '#2563eb', borderWidth: 2, pointRadius:0, tension:0.4 },
+                        { label: '50% RH', data: rh50, showLine:true, borderColor: '#bfdbfe', borderWidth:1, borderDash:[5,5], pointRadius:0, tension:0.4 },
+                        { label: 'Điểm', data: [{x:25, y:getW(25,50)}], backgroundColor:'#ea580c', pointRadius:8 },
+                        { label: 'Line', data: [], showLine:true, borderColor:'#dc2626', borderWidth:2, pointRadius:4 }
                     ]
                 },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: (ctx) => `DB: ${ctx.parsed.x.toFixed(1)}°C, W: ${ctx.parsed.y.toFixed(1)} g/kg`
-                            }
-                        }
-                    },
+                    responsive: true, maintainAspectRatio: false,
                     scales: {
-                        x: {
-                            type: 'linear',
-                            position: 'bottom',
-                            min: 0,
-                            max: 50,
-                            title: { display: true, text: 'Nhiệt độ Bầu khô (°C)', font: {weight: 'bold'} },
-                            grid: { color: '#e5e5e4' }
-                        },
-                        y: {
-                            type: 'linear',
-                            position: 'right', // Standard psych chart has W on right
-                            min: 0,
-                            max: 30,
-                            title: { display: true, text: 'Độ chứa hơi (g/kg)', font: {weight: 'bold'} },
-                            grid: { color: '#e5e5e4' }
-                        }
-                    }
+                        x: { type:'linear', position:'bottom', min:-5, max:55, title:{display:true, text:'Nhiệt độ Bầu khô (°C)'} },
+                        y: { type:'linear', position:'right', min:0, max:35, title:{display:true, text:'Độ chứa hơi (g/kg)'} }
+                    },
+                    plugins: { legend: {display:false}, tooltip: {callbacks: {label: c => `DB:${c.parsed.x.toFixed(1)}, W:${c.parsed.y.toFixed(1)}`}} }
                 }
             });
         }
 
-        // --- SYNC INPUTS ---
-        function syncInputs(type, source) {
-            const numEl = document.getElementById(`num-${type}`);
-            const rangeEl = document.getElementById(`range-${type}`);
+        // --- PROP TAB ---
+        function handlePropInput(trigger) {
+            let db = document.getElementById('prop-db').value;
+            let wb = document.getElementById('prop-wb').value;
+            let rh = document.getElementById('prop-rh').value;
+
+            const res = resolveState(db, wb, rh, trigger);
             
-            if (source === 'num') {
-                rangeEl.value = numEl.value;
-            } else {
-                numEl.value = rangeEl.value;
-            }
-            updateProperties();
+            // Update Inputs
+            if(trigger !== 'db') document.getElementById('prop-db').value = res.db.toFixed(1);
+            if(trigger !== 'wb') document.getElementById('prop-wb').value = res.wb.toFixed(1);
+            if(trigger !== 'rh') document.getElementById('prop-rh').value = res.rh.toFixed(0);
+            
+            // Sync Sliders
+            document.getElementById('range-prop-db').value = res.db;
+            document.getElementById('range-prop-rh').value = res.rh;
+            document.getElementById('label-range-db').textContent = res.db.toFixed(1) + "°C";
+            document.getElementById('label-range-rh').textContent = res.rh.toFixed(0) + "%";
+
+            updatePropCalcs(res.db, res.rh);
         }
 
-        function switchTab(id) {
-            // Hide all tabs
-            document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('hidden'));
-            document.getElementById(`tab-${id}`).classList.remove('hidden');
+        function handlePropSlider(trigger) {
+            let db = document.getElementById('range-prop-db').value;
+            let rh = document.getElementById('range-prop-rh').value;
             
-            // Reset Nav Styles
-            document.querySelectorAll('[id^="nav-"]').forEach(el => {
-                el.className = "inactive-tab px-4 py-2 text-sm rounded-md transition-all";
-            });
-            document.getElementById(`nav-${id}`).className = "active-tab px-4 py-2 text-sm rounded-md transition-all";
-
-            // Mobile Nav Styles
-            document.querySelectorAll('[id^="mob-nav-"]').forEach(el => el.classList.replace('text-orange-600', 'text-stone-400'));
-            document.getElementById(`mob-nav-${id}`).classList.replace('text-stone-400', 'text-orange-600');
-
-            currentTab = id;
+            // Sliders only drive DB and RH. WB is result.
+            // If trigger is DB slider -> Update WB input
+            // If trigger is RH slider -> Update WB input
             
-            // Reset chart overlays
-            if (id === 'properties') updateProperties();
-            if (id === 'processes') calcProcess();
-            if (id === 'mixing') {
-                // Clear lines for mixing init
-                chartInstance.data.datasets[3].data = [];
-                chartInstance.update();
-            }
+            const res = resolveState(db, 0, rh, 'rh'); // Force Calc WB
+            
+            document.getElementById('prop-db').value = parseFloat(db).toFixed(1);
+            document.getElementById('prop-rh').value = parseFloat(rh).toFixed(0);
+            document.getElementById('prop-wb').value = res.wb.toFixed(1);
+            
+            document.getElementById('label-range-db').textContent = parseFloat(db).toFixed(1) + "°C";
+            document.getElementById('label-range-rh').textContent = parseFloat(rh).toFixed(0) + "%";
+
+            updatePropCalcs(parseFloat(db), parseFloat(rh));
         }
 
-        // --- CALCULATIONS ---
+        function updatePropCalcs(db, rh) {
+            const w = getW(db, rh);
+            const h = getEnthalpy(db, w);
+            const v = getVol(db, w);
+            const dp = getDewPoint(db, rh);
 
-        function updateProperties() {
-            const db = parseFloat(document.getElementById('num-db').value);
-            const rh = parseFloat(document.getElementById('num-rh').value);
-
-            // Limit
-            if(rh > 100) document.getElementById('num-rh').value = 100;
-
-            // Calc
-            const w = getHumidityRatioSI(db, rh);
-            const h = getEnthalpySI(db, w);
-            const v = getSpecificVolumeSI(db, w);
-            const dp = getDewPointSI(db, rh);
-            const wb = getWetBulbSI(db, rh);
-
-            // DOM Update
             document.getElementById('calc-w').textContent = w.toFixed(1);
             document.getElementById('calc-h').textContent = h.toFixed(1);
             document.getElementById('calc-v').textContent = v.toFixed(3);
             document.getElementById('calc-dp').textContent = dp.toFixed(1);
 
-            document.getElementById('disp-db').textContent = db.toFixed(1) + "°";
-            document.getElementById('disp-wb').textContent = wb.toFixed(1) + "°";
-            document.getElementById('disp-rh').textContent = rh.toFixed(0) + "%";
-            document.getElementById('disp-dp').textContent = dp.toFixed(1) + "°";
-
-            // Chart Update
-            if (chartInstance && currentTab === 'properties') {
+            if(currentTab === 'properties' && chartInstance) {
                 chartInstance.data.datasets[2].data = [{x: db, y: w}];
-                chartInstance.data.datasets[3].data = []; // Clear lines
+                chartInstance.data.datasets[3].data = [];
                 chartInstance.update();
             }
+        }
+
+        // --- PROCESS TAB ---
+        function handleProcessInput(prefix, trigger) {
+            let db = document.getElementById(`${prefix}-db`).value;
+            let wb = document.getElementById(`${prefix}-wb`).value;
+            let rh = document.getElementById(`${prefix}-rh`).value;
+
+            const res = resolveState(db, wb, rh, trigger);
+
+            // Update DOM to reflect calcs
+            if(trigger !== 'db') document.getElementById(`${prefix}-db`).value = res.db.toFixed(1);
+            if(trigger !== 'wb') document.getElementById(`${prefix}-wb`).value = res.wb.toFixed(1);
+            if(trigger !== 'rh') document.getElementById(`${prefix}-rh`).value = res.rh.toFixed(0);
+
+            calcProcess();
         }
 
         function calcProcess() {
-            const p1_db = parseFloat(document.getElementById('p1-db').value);
-            const p1_wb = parseFloat(document.getElementById('p1-wb').value);
-            const p2_db = parseFloat(document.getElementById('p2-db').value);
-            const p2_wb = parseFloat(document.getElementById('p2-wb').value);
+            // Get clean values
+            const p1db = parseFloat(document.getElementById('p1-db').value);
+            const p1rh = parseFloat(document.getElementById('p1-rh').value);
+            const p2db = parseFloat(document.getElementById('p2-db').value);
+            const p2rh = parseFloat(document.getElementById('p2-rh').value);
             const flow = parseFloat(document.getElementById('process-flow').value);
 
-            // Get W for points
-            const w1 = getWFromDBWB_SI(p1_db, p1_wb);
-            const w2 = getWFromDBWB_SI(p2_db, p2_wb);
-            const h1 = getEnthalpySI(p1_db, w1);
-            const h2 = getEnthalpySI(p2_db, w2);
+            const w1 = getW(p1db, p1rh);
+            const h1 = getEnthalpy(p1db, w1);
+            const w2 = getW(p2db, p2rh);
+            const h2 = getEnthalpy(p2db, w2);
 
-            // Loads
-            const rho = 1.204; 
-            const m_dot = (flow / 1000) * rho; // kg/s
-            const Qt = m_dot * Math.abs(h1 - h2);
-            const Qs = m_dot * 1.006 * Math.abs(p1_db - p2_db);
-            const Ql = Qt - Qs; // Simplified or m_dot * 2501 * delta_W
-            
-            const SHR = Qt > 0 ? Qs/Qt : 0;
+            const rho = 1.204;
+            const m_dot = (flow / 1000) * rho;
+            const qt = m_dot * Math.abs(h1 - h2);
+            const qs = m_dot * 1.006 * Math.abs(p1db - p2db);
+            const ql = qt - qs;
+            const shr = qt > 0.01 ? qs/qt : 0;
 
-            document.getElementById('res-qt').textContent = Qt.toFixed(2) + " kW";
-            document.getElementById('res-qs').textContent = Qs.toFixed(2) + " kW";
-            document.getElementById('res-ql').textContent = Ql.toFixed(2) + " kW";
-            document.getElementById('res-shr').textContent = SHR.toFixed(2);
+            document.getElementById('res-qt').textContent = qt.toFixed(2) + " kW";
+            document.getElementById('res-qs').textContent = qs.toFixed(2) + " kW";
+            document.getElementById('res-ql').textContent = ql.toFixed(2) + " kW";
+            document.getElementById('res-shr').textContent = shr.toFixed(2);
 
-            // Chart
-            if (chartInstance && currentTab === 'processes') {
-                chartInstance.data.datasets[2].data = [{x: p1_db, y: w1}];
-                chartInstance.data.datasets[3].data = [
-                    {x: p1_db, y: w1},
-                    {x: p2_db, y: w2}
-                ];
+            if(currentTab === 'processes' && chartInstance) {
+                chartInstance.data.datasets[2].data = [{x: p1db, y: w1}];
+                chartInstance.data.datasets[3].data = [{x:p1db, y:w1}, {x:p2db, y:w2}];
                 chartInstance.update();
             }
+        }
+
+        // --- MIXING TAB ---
+        function handleMixingInput(prefix, trigger) {
+            let db = document.getElementById(`${prefix}-db`).value;
+            let wb = document.getElementById(`${prefix}-wb`).value;
+            let rh = document.getElementById(`${prefix}-rh`).value;
+
+            const res = resolveState(db, wb, rh, trigger);
+
+            if(trigger !== 'db') document.getElementById(`${prefix}-db`).value = res.db.toFixed(1);
+            if(trigger !== 'wb') document.getElementById(`${prefix}-wb`).value = res.wb.toFixed(1);
+            if(trigger !== 'rh') document.getElementById(`${prefix}-rh`).value = res.rh.toFixed(0);
+
+            calcMixing();
         }
 
         function calcMixing() {
-            const m1_flow = parseFloat(document.getElementById('m1-flow').value);
-            const m1_db = parseFloat(document.getElementById('m1-db').value);
-            const m1_wb = parseFloat(document.getElementById('m1-wb').value);
+            const m1f = parseFloat(document.getElementById('m1-flow').value);
+            const m1db = parseFloat(document.getElementById('m1-db').value);
+            const m1rh = parseFloat(document.getElementById('m1-rh').value);
             
-            const m2_flow = parseFloat(document.getElementById('m2-flow').value);
-            const m2_db = parseFloat(document.getElementById('m2-db').value);
-            const m2_wb = parseFloat(document.getElementById('m2-wb').value);
+            const m2f = parseFloat(document.getElementById('m2-flow').value);
+            const m2db = parseFloat(document.getElementById('m2-db').value);
+            const m2rh = parseFloat(document.getElementById('m2-rh').value);
 
-            const total = m1_flow + m2_flow;
-            if (total === 0) return;
+            const total = m1f + m2f;
+            if(total <= 0) return;
 
-            // Simple weighted avg for DB
-            const mix_db = (m1_flow * m1_db + m2_flow * m2_db) / total;
+            const w1 = getW(m1db, m1rh);
+            const h1 = getEnthalpy(m1db, w1);
+            const w2 = getW(m2db, m2rh);
+            const h2 = getEnthalpy(m2db, w2);
 
-            const w1 = getWFromDBWB_SI(m1_db, m1_wb);
-            const h1 = getEnthalpySI(m1_db, w1);
+            const mixDb = (m1f*m1db + m2f*m2db)/total;
+            const mixH = (m1f*h1 + m2f*h2)/total;
+            const mixW = (m1f*w1 + m2f*w2)/total;
             
-            const w2 = getWFromDBWB_SI(m2_db, m2_wb);
-            const h2 = getEnthalpySI(m2_db, w2);
+            // Reverse calc WB for display
+            // Find WB where H(wb, sat) approx mixH or use simple iteration
+            // Let's use robust state resolution. We know DB and W.
+            // Find RH from DB and W
+            const Ps = getPsat(mixDb);
+            const Pv = (mixW/1000 * P_ATM) / (0.622 + mixW/1000);
+            const mixRh = (Pv/Ps)*100;
+            const mixWb = calcWB(mixDb, mixRh);
 
-            const mix_h = (m1_flow * h1 + m2_flow * h2) / total;
-            const mix_w = (m1_flow * w1 + m2_flow * w2) / total;
+            document.getElementById('mix-db').textContent = mixDb.toFixed(1);
+            document.getElementById('mix-wb').textContent = mixWb.toFixed(1);
+            document.getElementById('mix-h').textContent = mixH.toFixed(1);
 
-            document.getElementById('mix-db').textContent = mix_db.toFixed(1) + "°";
-            document.getElementById('mix-h').textContent = mix_h.toFixed(1);
-
-            // Chart
-            if (chartInstance && currentTab === 'mixing') {
-                chartInstance.data.datasets[2].data = [{x: mix_db, y: mix_w}]; // Result point
-                chartInstance.data.datasets[3].data = [
-                    {x: m1_db, y: w1},
-                    {x: m2_db, y: w2}
-                ]; // Mixing line
+            if(currentTab === 'mixing' && chartInstance) {
+                chartInstance.data.datasets[2].data = [{x: mixDb, y: mixW}];
+                chartInstance.data.datasets[3].data = [{x:m1db, y:w1}, {x:m2db, y:w2}];
                 chartInstance.update();
             }
         }
 
-        // Init
-        window.onload = function() {
-            initChart();
-            updateProperties();
+        function switchTab(id) {
+            document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`tab-${id}`).classList.remove('hidden');
+            
+            document.querySelectorAll('[id^="nav-"]').forEach(el => el.className = "inactive-tab px-4 py-2 text-sm rounded-md transition-all");
+            document.getElementById(`nav-${id}`).className = "active-tab px-4 py-2 text-sm rounded-md transition-all";
+
+            document.querySelectorAll('[id^="mob-nav-"]').forEach(el => el.classList.replace('text-orange-600', 'text-stone-400'));
+            document.getElementById(`mob-nav-${id}`).classList.replace('text-stone-400', 'text-orange-600');
+
+            currentTab = id;
+            if(id === 'properties') updatePropCalcs(parseFloat(document.getElementById('prop-db').value), parseFloat(document.getElementById('prop-rh').value));
+            if(id === 'processes') calcProcess();
+            if(id === 'mixing') calcMixing();
         }
 
+        window.onload = function() {
+            initChart();
+            handlePropInput('db'); // Init calcs
+        }
     </script>
 </body>
 </html>
+```[Image of Psychrometric Chart]
+[Image of HVAC Process]
